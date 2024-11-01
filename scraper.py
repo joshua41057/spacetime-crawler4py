@@ -13,11 +13,11 @@ subdomains = defaultdict(int)
 
 logger = get_logger("CRAWLER")
 
+
 def scraper(url, resp):
-    """Extracts the next links from the given URL response and updates analytics."""
     links = extract_next_links(url, resp)
     get_logs()
-    return list(links)
+    return [link for link in links if is_valid(link)]
 
 
 def extract_next_links(url, resp):
@@ -30,24 +30,32 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
-    links = set()
+    links = []
 
-    if resp and resp.status == 200 and resp.raw_response and resp.raw_response.content:
-        content = BeautifulSoup(resp.raw_response.content, "html.parser")
+    # Check if the response status is 200 (OK)
+    if resp.status != 200:
+        logger.error(f"Failed to retrieve {url}: HTTP {resp.status}, error: {resp.error}")
+        return links
 
-        if page_value(url, resp):  # Assuming check is a predefined function
-            for a_tag in content.find_all("a"):
-                href = a_tag.attrs.get("href")
-                if href:
-                    # Join the base URL with the relative URL
-                    absolute_url = urljoin(resp.raw_response.url, href)
-                    valid_url = is_valid(absolute_url)
-                    if valid_url:
-                        links.add(valid_url)
-                        visited_urls.add(valid_url)  # Ensure visited_urls is updated
+    try:
+        # Parse the page content with BeautifulSoup
+        soup = BeautifulSoup(resp.raw_response.content, "html.parser")
+
+        # Find all 'a' tags with 'href' attributes (hyperlinks)
+        for anchor in soup.find_all('a', href=True):
+            # Get the href attribute (the link)
+            href = anchor['href']
+
+            # Join the relative URL with the base URL to form an absolute URL
+            absolute_url = urljoin(url, href)
+
+            # Add the absolute URL to the links list
+            links.append(absolute_url)
+
+    except Exception as e:
+        logger.error(f"Error extracting links from {url}: {e}")
 
     return links
-
 
 def is_valid(url):
     # Decide whether to crawl this url or not. 
